@@ -8,10 +8,19 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.Canvas;
+import android.graphics.Paint;
+import android.graphics.Rect;
+import android.graphics.Typeface;
+import android.util.Base64;
 import android.net.Uri;
 import android.os.Bundle;
 import android.provider.Settings;
+import android.text.Editable;
 import android.text.InputType;
+import android.text.TextWatcher;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.Button;
@@ -26,6 +35,7 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
@@ -44,10 +54,14 @@ import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+import com.google.zxing.BarcodeFormat;
+import com.google.zxing.MultiFormatWriter;
+import com.google.zxing.common.BitMatrix;
+
 public class MainActivity extends Activity {
     private static final String SUPABASE_URL = "https://admwtddiylyofpwtauui.supabase.co";
     private static final String SUPABASE_KEY = "sb_publishable_0CY42ztOEqpVSUEDBtJV5w_a_8W6Zg7";
-    private static final String APP_VERSION = "0.3.0";
+    private static final String APP_VERSION = "0.3.6";
     private static final String SUPPORT_PHONE = "07722523232";
 
     private static final String PREFS = "mawldati_license";
@@ -316,10 +330,12 @@ public class MainActivity extends Activity {
         String owner = prefs.getString(P_OWNER, "");
         String generator = prefs.getString(P_GENERATOR, "");
 
-        TextView welcome = text(owner == null || owner.isEmpty() ? "مرحباً بك" : "مرحباً، " + owner, 24, 0xFF0B1830, true);
+        TextView welcome = text(owner == null || owner.isEmpty() ? "مرحباً بك" : "مرحباً، " + owner,
+                isTablet() ? 28 : 24, 0xFF0B1830, true);
         root.addView(welcome, matchWrap());
 
-        TextView generatorText = text(generator == null || generator.isEmpty() ? "مولدتي" : "المولدة: " + generator, 15, 0xFF64748B, false);
+        TextView generatorText = text(generator == null || generator.isEmpty() ? "مولدتي" : "المولدة: " + generator,
+                isTablet() ? 17 : 15, 0xFF64748B, false);
         LinearLayout.LayoutParams genLp = matchWrap();
         genLp.setMargins(0, dp(3), 0, dp(14));
         root.addView(generatorText, genLp);
@@ -348,46 +364,71 @@ public class MainActivity extends Activity {
         int unpaid = Math.max(0, total - paid);
         double collected = sumCollectedCurrentMonth(subs);
 
-        TextView dashTitle = text("نظرة سريعة", 20, 0xFF0B1830, true);
+        TextView dashTitle = text("نظرة سريعة", isTablet() ? 22 : 20, 0xFF0B1830, true);
         LinearLayout.LayoutParams dtp = matchWrap();
         dtp.setMargins(0, dp(18), 0, dp(10));
         root.addView(dashTitle, dtp);
 
-        LinearLayout row1 = horizontalRow();
-        addStatCard(row1, "المشتركين", String.valueOf(total), 0xFF0F766E);
-        addStatCard(row1, "الدافعين", String.valueOf(paid), 0xFF16A34A);
-        root.addView(row1, matchWrap());
+        if (isTablet()) {
+            LinearLayout stats = horizontalRow();
+            addStatCard(stats, "المشتركين", String.valueOf(total), 0xFF0F766E);
+            addStatCard(stats, "الدافعين", String.valueOf(paid), 0xFF16A34A);
+            addStatCard(stats, "غير الدافعين", String.valueOf(unpaid), 0xFFDC2626);
+            addStatCard(stats, "المقبوض", money(collected), 0xFF2563EB);
+            root.addView(stats, matchWrap());
+        } else {
+            LinearLayout row1 = horizontalRow();
+            addStatCard(row1, "المشتركين", String.valueOf(total), 0xFF0F766E);
+            addStatCard(row1, "الدافعين", String.valueOf(paid), 0xFF16A34A);
+            root.addView(row1, matchWrap());
 
-        LinearLayout row2 = horizontalRow();
-        addStatCard(row2, "غير الدافعين", String.valueOf(unpaid), 0xFFDC2626);
-        addStatCard(row2, "المقبوض", money(collected), 0xFF2563EB);
-        LinearLayout.LayoutParams r2p = matchWrap();
-        r2p.setMargins(0, dp(10), 0, 0);
-        root.addView(row2, r2p);
+            LinearLayout row2 = horizontalRow();
+            addStatCard(row2, "غير الدافعين", String.valueOf(unpaid), 0xFFDC2626);
+            addStatCard(row2, "المقبوض", money(collected), 0xFF2563EB);
+            LinearLayout.LayoutParams r2p = matchWrap();
+            r2p.setMargins(0, dp(10), 0, 0);
+            root.addView(row2, r2p);
+        }
 
-        TextView servicesTitle = text("إدارة المولدة", 20, 0xFF0B1830, true);
+        TextView servicesTitle = text("إدارة المولدة", isTablet() ? 22 : 20, 0xFF0B1830, true);
         LinearLayout.LayoutParams stp = matchWrap();
         stp.setMargins(0, dp(20), 0, dp(10));
         root.addView(servicesTitle, stp);
 
-        LinearLayout m1 = horizontalRow();
-        addMenuButton(m1, "المشتركين", "إضافة وتعديل المشتركين", 0xFF0F766E, v -> renderSubscribers());
-        addMenuButton(m1, "الجباية", "تسجيل الدفع الشهري", 0xFF2563EB, v -> renderCollections());
-        root.addView(m1, matchWrap());
+        if (isTablet()) {
+            LinearLayout m1 = horizontalRow();
+            addMenuButton(m1, "المشتركين", "إضافة وتعديل المشتركين", 0xFF0F766E, v -> renderSubscribers());
+            addMenuButton(m1, "الجباية", "تسجيل الدفع الشهري", 0xFF2563EB, v -> renderCollections());
+            addMenuButton(m1, "المصروفات", "وقود وصيانة ومصاريف", 0xFFF59E0B, v -> renderExpenses());
+            root.addView(m1, matchWrap());
 
-        LinearLayout m2 = horizontalRow();
-        addMenuButton(m2, "المصروفات", "وقود وصيانة ومصاريف", 0xFFF59E0B, v -> renderExpenses());
-        addMenuButton(m2, "التقارير", "ملخص الشهر والأرباح", 0xFF7C3AED, v -> renderReports());
-        LinearLayout.LayoutParams m2p = matchWrap();
-        m2p.setMargins(0, dp(10), 0, 0);
-        root.addView(m2, m2p);
+            LinearLayout m2 = horizontalRow();
+            addMenuButton(m2, "التقارير", "ملخص الشهر والأرباح", 0xFF7C3AED, v -> renderReports());
+            addMenuButton(m2, "الاشتراك", "حالة ترخيص التطبيق", 0xFF16A34A, v -> renderLicenseDetails());
+            addMenuButton(m2, "الإعدادات", "بيانات الجهاز والدعم", 0xFF475569, v -> renderSettings());
+            LinearLayout.LayoutParams m2p = matchWrap();
+            m2p.setMargins(0, dp(10), 0, 0);
+            root.addView(m2, m2p);
+        } else {
+            LinearLayout m1 = horizontalRow();
+            addMenuButton(m1, "المشتركين", "إضافة وتعديل المشتركين", 0xFF0F766E, v -> renderSubscribers());
+            addMenuButton(m1, "الجباية", "تسجيل الدفع الشهري", 0xFF2563EB, v -> renderCollections());
+            root.addView(m1, matchWrap());
 
-        LinearLayout m3 = horizontalRow();
-        addMenuButton(m3, "الاشتراك", "حالة ترخيص التطبيق", 0xFF16A34A, v -> renderLicenseDetails());
-        addMenuButton(m3, "الإعدادات", "بيانات الجهاز والدعم", 0xFF475569, v -> renderSettings());
-        LinearLayout.LayoutParams m3p = matchWrap();
-        m3p.setMargins(0, dp(10), 0, 0);
-        root.addView(m3, m3p);
+            LinearLayout m2 = horizontalRow();
+            addMenuButton(m2, "المصروفات", "وقود وصيانة ومصاريف", 0xFFF59E0B, v -> renderExpenses());
+            addMenuButton(m2, "التقارير", "ملخص الشهر والأرباح", 0xFF7C3AED, v -> renderReports());
+            LinearLayout.LayoutParams m2p = matchWrap();
+            m2p.setMargins(0, dp(10), 0, 0);
+            root.addView(m2, m2p);
+
+            LinearLayout m3 = horizontalRow();
+            addMenuButton(m3, "الاشتراك", "حالة ترخيص التطبيق", 0xFF16A34A, v -> renderLicenseDetails());
+            addMenuButton(m3, "الإعدادات", "بيانات الجهاز والدعم", 0xFF475569, v -> renderSettings());
+            LinearLayout.LayoutParams m3p = matchWrap();
+            m3p.setMargins(0, dp(10), 0, 0);
+            root.addView(m3, m3p);
+        }
 
         addFooter(root);
         setContentView(scroll);
@@ -399,26 +440,103 @@ public class MainActivity extends Activity {
         LinearLayout root = (LinearLayout) scroll.getChildAt(0);
         addSectionHeader(root, "المشتركين", "إدارة أسماء المشتركين وأسعار الاشتراك الشهري");
 
+        EditText search = new EditText(this);
+        search.setHint("ابحث عن اسم المشترك...");
+        search.setSingleLine(true);
+        search.setTextSize(16);
+        search.setInputType(InputType.TYPE_CLASS_TEXT);
+        search.setGravity(Gravity.RIGHT | Gravity.CENTER_VERTICAL);
+        search.setPadding(dp(14), dp(12), dp(14), dp(12));
+        search.setBackgroundColor(0xFFF8FAFC);
+        LinearLayout.LayoutParams searchLp = new LinearLayout.LayoutParams(-1, dp(50));
+        searchLp.setMargins(0, 0, 0, dp(10));
+        root.addView(search, searchLp);
+
         Button add = primaryButton("+ إضافة مشترك");
         add.setOnClickListener(v -> showSubscriberDialog(null));
         root.addView(add, new LinearLayout.LayoutParams(-1, dp(50)));
 
-        JSONArray arr = getSubscribers();
-        if (arr.length() == 0) {
-            root.addView(emptyCard("لا يوجد مشتركون حتى الآن", "اضغط إضافة مشترك لبدء العمل."), spacedCardLp());
-        } else {
-            for (int i = 0; i < arr.length(); i++) {
-                JSONObject s = arr.optJSONObject(i);
-                if (s == null) continue;
-                root.addView(subscriberCard(s), spacedCardLp());
+        LinearLayout listContainer = new LinearLayout(this);
+        listContainer.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams listLp = matchWrap();
+        listLp.setMargins(0, dp(4), 0, 0);
+        root.addView(listContainer, listLp);
+
+        renderSubscriberSearchResults(listContainer, "");
+
+        search.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) { }
+            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
+                renderSubscriberSearchResults(listContainer, s == null ? "" : s.toString());
             }
-        }
+            @Override public void afterTextChanged(Editable s) { }
+        });
+
         addFooter(root);
         setContentView(scroll);
+        search.requestFocusFromTouch();
     }
 
-    private LinearLayout subscriberCard(JSONObject s) {
-        LinearLayout c = card();
+    private void renderSubscriberSearchResults(LinearLayout container, String query) {
+        container.removeAllViews();
+        JSONArray arr = getSubscribers();
+        String q = query == null ? "" : query.trim().toLowerCase(Locale.ROOT);
+
+        if (arr.length() == 0) {
+            container.addView(emptyCard("لا يوجد مشتركون حتى الآن", "اضغط إضافة مشترك لبدء العمل."), spacedCardLp());
+            return;
+        }
+
+        container.addView(subscriberListHeader(), subscriberRowLp());
+
+        int matches = 0;
+        for (int i = 0; i < arr.length(); i++) {
+            JSONObject s = arr.optJSONObject(i);
+            if (s == null) continue;
+            String name = s.optString("name", "");
+            if (!q.isEmpty() && !name.toLowerCase(Locale.ROOT).contains(q)) continue;
+            container.addView(subscriberListRow(i + 1, s), subscriberRowLp());
+            matches++;
+        }
+
+        if (matches == 0) {
+            container.addView(emptyCard("لا توجد نتيجة", "لم يتم العثور على مشترك بهذا الاسم."), spacedCardLp());
+        }
+    }
+
+    private LinearLayout subscriberListHeader() {
+        LinearLayout h = horizontalRow();
+        h.setGravity(Gravity.CENTER_VERTICAL);
+        h.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
+        h.setPadding(dp(10), dp(7), dp(10), dp(7));
+        h.setBackground(makeRounded(0xFFEFF6F6, 8));
+
+        TextView num = text("#", 12, 0xFF64748B, true);
+        num.setGravity(Gravity.CENTER);
+        h.addView(num, new LinearLayout.LayoutParams(dp(34), -2));
+
+        TextView name = text("اسم المشترك", 12, 0xFF475569, true);
+        name.setGravity(Gravity.RIGHT | Gravity.CENTER_VERTICAL);
+        h.addView(name, new LinearLayout.LayoutParams(0, -2, 1.8f));
+
+        TextView amps = text("الأمبير", 12, 0xFF475569, true);
+        amps.setGravity(Gravity.CENTER);
+        h.addView(amps, new LinearLayout.LayoutParams(0, -2, 1.0f));
+
+        TextView paid = text("الدفع", 12, 0xFF475569, true);
+        paid.setGravity(Gravity.CENTER);
+        h.addView(paid, new LinearLayout.LayoutParams(0, -2, 1.15f));
+        return h;
+    }
+
+    private LinearLayout subscriberListRow(int number, JSONObject s) {
+        LinearLayout c = new LinearLayout(this);
+        c.setOrientation(LinearLayout.VERTICAL);
+        c.setPadding(dp(10), dp(10), dp(10), dp(10));
+        android.graphics.drawable.GradientDrawable bg = makeRounded(0xFFFFFFFF, 10);
+        bg.setStroke(dp(1), 0xFFE2E8F0);
+        c.setBackground(bg);
+
         String name = s.optString("name", "بدون اسم");
         String phone = s.optString("phone", "");
         String area = s.optString("area", "");
@@ -426,17 +544,45 @@ public class MainActivity extends Activity {
         double fee = s.optDouble("fee", 0);
         boolean paid = isPaidCurrentMonth(s);
 
-        TextView n = text(name, 19, 0xFF0B1830, true);
-        c.addView(n, matchWrap());
-        String details = (area.isEmpty() ? "" : area + " • ") + (amps > 0 ? amps + " أمبير • " : "") + money(fee);
-        TextView d = text(details, 14, 0xFF64748B, false);
-        LinearLayout.LayoutParams dp1 = matchWrap(); dp1.setMargins(0, dp(4), 0, 0); c.addView(d, dp1);
+        LinearLayout main = horizontalRow();
+        main.setGravity(Gravity.CENTER_VERTICAL);
+        main.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
+
+        TextView num = text(String.valueOf(number), 16, 0xFF475569, true);
+        num.setGravity(Gravity.CENTER);
+        main.addView(num, new LinearLayout.LayoutParams(dp(34), dp(40)));
+
+        TextView nameView = text(name, 16, 0xFF0B1830, true);
+        nameView.setGravity(Gravity.RIGHT | Gravity.CENTER_VERTICAL);
+        main.addView(nameView, new LinearLayout.LayoutParams(0, dp(40), 1.8f));
+
+        TextView ampsView = text((amps > 0 ? amps : 0) + " أمبير", 14, 0xFF334155, true);
+        ampsView.setGravity(Gravity.CENTER);
+        main.addView(ampsView, new LinearLayout.LayoutParams(0, dp(40), 1.0f));
+
+        TextView paidView = text(paid ? "● مدفوع" : "● غير مدفوع", 14, paid ? 0xFF16A34A : 0xFFDC2626, true);
+        paidView.setGravity(Gravity.CENTER);
+        main.addView(paidView, new LinearLayout.LayoutParams(0, dp(40), 1.15f));
+
+        c.addView(main, matchWrap());
+
+        StringBuilder extra = new StringBuilder();
+        if (!area.isEmpty()) extra.append(area);
         if (!phone.isEmpty()) {
-            TextView ph = text(phone, 14, 0xFF475569, false);
-            LinearLayout.LayoutParams pp = matchWrap(); pp.setMargins(0, dp(3), 0, 0); c.addView(ph, pp);
+            if (extra.length() > 0) extra.append("  •  ");
+            extra.append(phone);
         }
-        TextView ps = text("●  " + (paid ? "مدفوع هذا الشهر" : "غير مدفوع هذا الشهر"), 14, paid ? 0xFF16A34A : 0xFFDC2626, true);
-        LinearLayout.LayoutParams psp = matchWrap(); psp.setMargins(0, dp(8), 0, dp(10)); c.addView(ps, psp);
+        if (fee > 0) {
+            if (extra.length() > 0) extra.append("  •  ");
+            extra.append("الاشتراك: ").append(money(fee));
+        }
+        if (extra.length() > 0) {
+            TextView info = text(extra.toString(), 12, 0xFF64748B, false);
+            info.setGravity(Gravity.RIGHT);
+            LinearLayout.LayoutParams ip = matchWrap();
+            ip.setMargins(0, dp(2), 0, dp(6));
+            c.addView(info, ip);
+        }
 
         LinearLayout actions = horizontalRow();
         Button edit = outlineButton("تعديل");
@@ -445,9 +591,17 @@ public class MainActivity extends Activity {
         Button del = outlineButton("حذف");
         del.setTextColor(0xFFB91C1C);
         del.setOnClickListener(v -> confirmDeleteSubscriber(s.optString("id")));
-        LinearLayout.LayoutParams dl = halfButtonLp(); dl.setMargins(dp(6), 0, 0, 0); actions.addView(del, dl);
+        LinearLayout.LayoutParams dl = halfButtonLp();
+        dl.setMargins(dp(6), 0, 0, 0);
+        actions.addView(del, dl);
         c.addView(actions, matchWrap());
         return c;
+    }
+
+    private LinearLayout.LayoutParams subscriberRowLp() {
+        LinearLayout.LayoutParams lp = matchWrap();
+        lp.setMargins(0, dp(6), 0, 0);
+        return lp;
     }
 
     private void showSubscriberDialog(JSONObject existing) {
@@ -548,7 +702,15 @@ public class MainActivity extends Activity {
 
         c.addView(text(name, 18, 0xFF0B1830, true), matchWrap());
         TextView amount = text(paid ? "مدفوع: " + money(paidAmount) : "المطلوب: " + money(fee), 14, paid ? 0xFF16A34A : 0xFF64748B, false);
-        LinearLayout.LayoutParams ap = matchWrap(); ap.setMargins(0, dp(4), 0, dp(10)); c.addView(amount, ap);
+        LinearLayout.LayoutParams ap = matchWrap(); ap.setMargins(0, dp(4), 0, dp(6)); c.addView(amount, ap);
+
+        String receiptNo = s.optString("receipt_no", "");
+        if (paid && !receiptNo.isEmpty()) {
+            TextView rn = text("رقم الوصل: " + receiptNo, 13, 0xFF0F766E, true);
+            LinearLayout.LayoutParams rlp = matchWrap(); rlp.setMargins(0, 0, 0, dp(10)); c.addView(rn, rlp);
+        } else {
+            ap.setMargins(0, dp(4), 0, dp(10));
+        }
 
         if (!paid) {
             Button pay = primaryButton("تسجيل الدفع");
@@ -556,8 +718,8 @@ public class MainActivity extends Activity {
             c.addView(pay, new LinearLayout.LayoutParams(-1, dp(46)));
         } else {
             LinearLayout actions = horizontalRow();
-            Button receipt = outlineButton("إرسال إيصال");
-            receipt.setOnClickListener(v -> shareReceipt(s));
+            Button receipt = outlineButton(receiptNo.isEmpty() ? "إصدار وإرسال الوصل الرسمي" : "إعادة إرسال الوصل الرسمي");
+            receipt.setOnClickListener(v -> sendReceiptWhatsApp(s, receipt));
             actions.addView(receipt, halfButtonLp());
             Button undo = outlineButton("إلغاء الدفع");
             undo.setTextColor(0xFFB91C1C);
@@ -581,7 +743,7 @@ public class MainActivity extends Activity {
                     try {
                         s.put("paid_month", currentMonth());
                         s.put("paid_amount", safeDouble(amount.getText().toString()));
-                        s.put("paid_at", LocalDate.now().toString());
+                        s.put("paid_at", Instant.now().toString());
                         JSONArray arr = getSubscribers();
                         replaceById(arr, s);
                         saveSubscribers(arr);
@@ -593,32 +755,306 @@ public class MainActivity extends Activity {
     }
 
     private void undoPayment(JSONObject s) {
+        String receiptNo = s.optString("receipt_no", "");
+        String message = receiptNo.isEmpty()
+                ? "سيعود المشترك إلى غير مدفوع لهذا الشهر."
+                : "تم إصدار وصل رسمي رقم " + receiptNo + ". سيتم إلغاء الوصل في السيرفر مع الاحتفاظ به في سجل التدقيق، ثم يعود المشترك إلى غير مدفوع.";
         new AlertDialog.Builder(this)
-                .setTitle("إلغاء الدفع")
-                .setMessage("سيعود المشترك إلى غير مدفوع لهذا الشهر.")
-                .setNegativeButton("إلغاء", null)
+                .setTitle(receiptNo.isEmpty() ? "إلغاء الدفع" : "إلغاء الدفع والوصل")
+                .setMessage(message)
+                .setNegativeButton("رجوع", null)
                 .setPositiveButton("متابعة", (d,w) -> {
-                    try {
-                        s.remove("paid_month"); s.remove("paid_amount"); s.remove("paid_at");
-                        JSONArray arr = getSubscribers(); replaceById(arr, s); saveSubscribers(arr); renderCollections();
-                    } catch (Exception ignored) {}
+                    if (receiptNo.isEmpty()) clearPaymentLocally(s);
+                    else cancelReceiptAndUndo(s, receiptNo);
                 }).show();
     }
 
-    private void shareReceipt(JSONObject s) {
-        String generator = prefs.getString(P_GENERATOR, "مولدتي");
-        String message = "إيصال اشتراك مولدة\n" +
-                "المولدة: " + generator + "\n" +
-                "المشترك: " + s.optString("name", "") + "\n" +
-                "الشهر: " + displayMonth(currentMonth()) + "\n" +
-                "المبلغ: " + money(s.optDouble("paid_amount", s.optDouble("fee", 0))) + "\n" +
-                "تاريخ الدفع: " + s.optString("paid_at", LocalDate.now().toString()) + "\n" +
-                "ELYAS-TECH - " + SUPPORT_PHONE;
-        Intent intent = new Intent(Intent.ACTION_SEND);
-        intent.setType("text/plain");
-        intent.putExtra(Intent.EXTRA_TEXT, message);
-        try { startActivity(Intent.createChooser(intent, "إرسال الإيصال")); }
-        catch (Exception e) { Toast.makeText(this, "تعذر فتح تطبيق المشاركة", Toast.LENGTH_SHORT).show(); }
+    private void clearPaymentLocally(JSONObject s) {
+        try {
+            s.remove("paid_month");
+            s.remove("paid_amount");
+            s.remove("paid_at");
+            s.remove("receipt_no");
+            s.remove("receipt_id");
+            s.remove("receipt_verify_url");
+            JSONArray arr = getSubscribers();
+            replaceById(arr, s);
+            saveSubscribers(arr);
+            renderCollections();
+        } catch (Exception ignored) { }
+    }
+
+    private void cancelReceiptAndUndo(JSONObject s, String receiptNo) {
+        String activationCode = prefs.getString(P_CODE, "");
+        renderLoading("جارِ إلغاء الوصل", "يتم تسجيل الإلغاء في السيرفر مع الاحتفاظ بسجل الوصل القديم...");
+        executor.execute(() -> {
+            try {
+                JSONObject req = new JSONObject();
+                req.put("p_activation_code", activationCode == null ? "" : activationCode.trim().toUpperCase(Locale.ROOT));
+                req.put("p_device_id", deviceId);
+                req.put("p_receipt_no", receiptNo);
+                JSONObject result = postJson(SUPABASE_URL + "/rest/v1/rpc/cancel_receipt", req, 15000, 15000);
+                if (!result.optBoolean("ok", false)) throw new Exception(result.optString("error", "cancel_failed"));
+                runOnUiThread(() -> clearPaymentLocally(s));
+            } catch (Exception e) {
+                runOnUiThread(() -> {
+                    Toast.makeText(this, "تعذر إلغاء الوصل: " + friendlyWhatsAppError(e.getMessage()), Toast.LENGTH_LONG).show();
+                    renderCollections();
+                });
+            }
+        });
+    }
+
+    private void sendReceiptWhatsApp(JSONObject s, Button button) {
+        String phone = normalizeIraqPhone(s.optString("phone", ""));
+        if (phone.isEmpty()) {
+            Toast.makeText(this, "لا يوجد رقم هاتف صحيح لهذا المشترك", Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        String activationCode = prefs.getString(P_CODE, "");
+        if (activationCode == null || activationCode.trim().isEmpty()) {
+            Toast.makeText(this, "تعذر التحقق من ترخيص التطبيق", Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        button.setEnabled(false);
+        button.setText("جارِ إصدار الوصل...");
+
+        executor.execute(() -> {
+            try {
+                JSONObject issue = new JSONObject();
+                issue.put("p_activation_code", activationCode.trim().toUpperCase(Locale.ROOT));
+                issue.put("p_device_id", deviceId);
+                issue.put("p_subscriber_local_id", s.optString("id", ""));
+                issue.put("p_subscriber_name", s.optString("name", ""));
+                issue.put("p_subscriber_phone", phone);
+                issue.put("p_subscriber_area", s.optString("area", ""));
+                issue.put("p_amps", s.optInt("amps", 0));
+                issue.put("p_generator_name", prefs.getString(P_GENERATOR, "مولدتي"));
+                issue.put("p_paid_month", s.optString("paid_month", currentMonth()));
+                issue.put("p_amount", s.optDouble("paid_amount", s.optDouble("fee", 0)));
+                issue.put("p_paid_at", s.optString("paid_at", Instant.now().toString()));
+
+                JSONObject receipt = postJson(SUPABASE_URL + "/rest/v1/rpc/issue_receipt", issue, 15000, 20000);
+                if (!receipt.optBoolean("ok", false)) {
+                    throw new Exception(receipt.optString("error", "receipt_issue_failed"));
+                }
+
+                String receiptNo = receipt.optString("receipt_no", "");
+                String verifyUrl = receipt.optString("verify_url", "");
+                if (receiptNo.isEmpty() || verifyUrl.isEmpty()) throw new Exception("receipt_data_missing");
+
+                // Save the server-issued number locally only as a convenient reference. The authoritative copy is on Supabase.
+                s.put("receipt_no", receiptNo);
+                s.put("receipt_id", receipt.optString("receipt_id", ""));
+                s.put("receipt_verify_url", verifyUrl);
+                JSONArray arr = getSubscribers();
+                replaceById(arr, s);
+                saveSubscribers(arr);
+
+                String imageBase64 = buildOfficialReceiptBase64(receipt);
+
+                JSONObject request = new JSONObject();
+                request.put("activation_code", activationCode.trim().toUpperCase(Locale.ROOT));
+                request.put("device_id", deviceId);
+                request.put("receipt_no", receiptNo);
+                request.put("image_base64", imageBase64);
+
+                JSONObject result = postJson(SUPABASE_URL + "/functions/v1/send-whatsapp-receipt", request, 20000, 30000);
+                if (!result.optBoolean("ok", false)) {
+                    throw new Exception(result.optString("error", "whatsapp_send_failed"));
+                }
+
+                runOnUiThread(() -> {
+                    button.setEnabled(true);
+                    button.setText("إعادة إرسال الوصل الرسمي");
+                    Toast.makeText(this, "تم إرسال الوصل الرسمي رقم " + receiptNo + " إلى واتساب المشترك", Toast.LENGTH_LONG).show();
+                    renderCollections();
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> {
+                    button.setEnabled(true);
+                    button.setText(s.optString("receipt_no", "").isEmpty() ? "إصدار وإرسال الوصل الرسمي" : "إعادة إرسال الوصل الرسمي");
+                    Toast.makeText(this, "فشل إرسال الوصل: " + friendlyWhatsAppError(e.getMessage()), Toast.LENGTH_LONG).show();
+                });
+            }
+        });
+    }
+
+    private JSONObject postJson(String urlString, JSONObject request, int connectTimeout, int readTimeout) throws Exception {
+        URL url = new URL(urlString);
+        HttpURLConnection c = (HttpURLConnection) url.openConnection();
+        c.setRequestMethod("POST");
+        c.setConnectTimeout(connectTimeout);
+        c.setReadTimeout(readTimeout);
+        c.setDoOutput(true);
+        c.setRequestProperty("apikey", SUPABASE_KEY);
+        c.setRequestProperty("Authorization", "Bearer " + SUPABASE_KEY);
+        c.setRequestProperty("Content-Type", "application/json");
+        c.setRequestProperty("Accept", "application/json");
+        byte[] body = request.toString().getBytes(StandardCharsets.UTF_8);
+        try (OutputStream os = c.getOutputStream()) { os.write(body); }
+        int http = c.getResponseCode();
+        InputStream stream = http >= 200 && http < 300 ? c.getInputStream() : c.getErrorStream();
+        String response = readAll(stream);
+        if (http < 200 || http >= 300) throw new Exception("HTTP " + http + ": " + response);
+        if (response == null || response.trim().isEmpty()) return new JSONObject().put("ok", true);
+        return new JSONObject(response);
+    }
+
+    private String buildOfficialReceiptBase64(JSONObject r) throws Exception {
+        final int W = 1080;
+        final int H = 1900;
+        Bitmap bmp = Bitmap.createBitmap(W, H, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(bmp);
+        canvas.drawColor(Color.WHITE);
+
+        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+        p.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
+
+        // Header
+        p.setColor(0xFF0B1830);
+        canvas.drawRect(0, 0, W, 250, p);
+        Bitmap logo = BitmapFactory.decodeResource(getResources(), R.drawable.elyas_tech_logo);
+        if (logo != null) {
+            Rect dst = new Rect(120, 20, 960, 190);
+            canvas.drawBitmap(logo, null, dst, p);
+        }
+        p.setColor(Color.WHITE);
+        p.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+        p.setTextSize(42);
+        p.setTextAlign(Paint.Align.CENTER);
+        canvas.drawText("وصل دفع اشتراك رسمي", W / 2f, 230, p);
+
+        String receiptNo = r.optString("receipt_no", "-");
+        String subscriberName = r.optString("subscriber_name", "-");
+        String phone = r.optString("subscriber_phone", "-");
+        String area = r.optString("subscriber_area", "-");
+        String generator = r.optString("generator_name", "مولدتي");
+        String month = displayMonth(r.optString("paid_month", currentMonth()));
+        String amount = money(r.optDouble("amount", 0));
+        String paidAt = formatReceiptDate(r.optString("paid_at", ""));
+        int amps = r.optInt("amps", 0);
+        String verifyUrl = r.optString("verify_url", "");
+
+        // Generator title
+        p.setTextAlign(Paint.Align.RIGHT);
+        p.setColor(0xFF0B1830);
+        p.setTextSize(40);
+        p.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+        canvas.drawText("المولدة: " + generator, 970, 320, p);
+
+        // Receipt number box
+        p.setColor(0xFFFFF1F2);
+        canvas.drawRoundRect(90, 355, 990, 445, 18, 18, p);
+        p.setColor(0xFFB91C1C);
+        p.setTextSize(36);
+        p.setTextAlign(Paint.Align.CENTER);
+        canvas.drawText("رقم الوصل: " + receiptNo, W/2f, 414, p);
+
+        float y = 520;
+        y = drawReceiptRow(canvas, p, "اسم المشترك", subscriberName, y);
+        y = drawReceiptRow(canvas, p, "رقم الهاتف", phone, y);
+        y = drawReceiptRow(canvas, p, "المنطقة", area.isEmpty() ? "-" : area, y);
+        y = drawReceiptRow(canvas, p, "عدد الأمبيرات", amps + " أمبير", y);
+        y = drawReceiptRow(canvas, p, "مبلغ الاشتراك", amount, y);
+        y = drawReceiptRow(canvas, p, "الشهر / الفترة", month, y);
+        y = drawReceiptRow(canvas, p, "تاريخ ووقت الدفع", paidAt, y);
+
+        // Paid status
+        p.setColor(0xFFDCFCE7);
+        canvas.drawRoundRect(330, y + 10, 750, y + 100, 22, 22, p);
+        p.setColor(0xFF15803D);
+        p.setTextAlign(Paint.Align.CENTER);
+        p.setTextSize(40);
+        p.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+        canvas.drawText("مدفوع ✓", W/2f, y + 70, p);
+
+        // QR verification
+        Bitmap qr = createQrBitmap(verifyUrl, 300);
+        if (qr != null) canvas.drawBitmap(qr, 390, y + 135, p);
+        p.setColor(0xFF334155);
+        p.setTextAlign(Paint.Align.CENTER);
+        p.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
+        p.setTextSize(27);
+        canvas.drawText("امسح QR للتحقق من صحة الوصل من السيرفر", W/2f, y + 475, p);
+
+        // Footer
+        p.setColor(0xFFE2E8F0);
+        canvas.drawRect(70, 1750, 1010, 1753, p);
+        p.setColor(0xFF0F766E);
+        p.setTextSize(30);
+        p.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+        canvas.drawText("ELYAS-TECH  •  " + SUPPORT_PHONE, W/2f, 1810, p);
+        p.setColor(0xFF64748B);
+        p.setTextSize(23);
+        p.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
+        canvas.drawText("هذا الوصل صادر إلكترونياً ورقمه محفوظ في السيرفر", W/2f, 1855, p);
+
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        bmp.compress(Bitmap.CompressFormat.PNG, 92, out);
+        return Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP);
+    }
+
+    private float drawReceiptRow(Canvas canvas, Paint p, String label, String value, float y) {
+        p.setColor(0xFFF8FAFC);
+        canvas.drawRoundRect(70, y - 45, 1010, y + 45, 10, 10, p);
+        p.setTextSize(30);
+        p.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+        p.setColor(0xFF475569);
+        p.setTextAlign(Paint.Align.RIGHT);
+        canvas.drawText(label + " :", 970, y + 10, p);
+        p.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
+        p.setColor(0xFF0B1830);
+        p.setTextAlign(Paint.Align.LEFT);
+        canvas.drawText(value == null || value.isEmpty() ? "-" : value, 100, y + 10, p);
+        return y + 105;
+    }
+
+    private Bitmap createQrBitmap(String content, int size) {
+        try {
+            if (content == null || content.isEmpty()) return null;
+            BitMatrix m = new MultiFormatWriter().encode(content, BarcodeFormat.QR_CODE, size, size);
+            Bitmap b = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
+            for (int y = 0; y < size; y++) {
+                for (int x = 0; x < size; x++) b.setPixel(x, y, m.get(x, y) ? Color.BLACK : Color.WHITE);
+            }
+            return b;
+        } catch (Exception e) { return null; }
+    }
+
+    private String formatReceiptDate(String value) {
+        try {
+            if (value == null || value.isEmpty()) return "-";
+            Instant i = Instant.parse(value);
+            return DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm", Locale.US).withZone(ZoneId.systemDefault()).format(i);
+        } catch (Exception e) {
+            return value == null || value.isEmpty() ? "-" : value;
+        }
+    }
+
+    private String normalizeIraqPhone(String value) {
+        if (value == null) return "";
+        String digits = value.replaceAll("[^0-9]", "");
+        if (digits.startsWith("00")) digits = digits.substring(2);
+        if (digits.startsWith("0") && digits.length() >= 10) digits = "964" + digits.substring(1);
+        else if (!digits.startsWith("964") && digits.length() == 10) digits = "964" + digits;
+        if (!digits.startsWith("964") || digits.length() < 12 || digits.length() > 13) return "";
+        return digits;
+    }
+
+    private String friendlyWhatsAppError(String raw) {
+        if (raw == null || raw.trim().isEmpty()) return "تحقق من إعداد خدمة واتساب";
+        String r = raw.toLowerCase(Locale.ROOT);
+        if (r.contains("whatsapp_not_configured")) return "خدمة واتساب لم تُضبط بعد على السيرفر";
+        if (r.contains("template")) return "قالب الوصل المصوّر في واتساب غير جاهز أو غير معتمد";
+        if (r.contains("receipt_data_missing") || r.contains("receipt_issue_failed")) return "تعذر إصدار رقم الوصل من السيرفر";
+        if (r.contains("receipt_not_found")) return "رقم الوصل غير موجود في السيرفر";
+        if (r.contains("receipt_cancelled")) return "هذا الوصل ملغي ولا يمكن إرساله";
+        if (r.contains("license")) return "تعذر التحقق من ترخيص التطبيق";
+        if (r.contains("phone")) return "رقم هاتف المشترك غير صحيح";
+        return raw.length() > 120 ? raw.substring(0, 120) : raw;
     }
 
     private void renderExpenses() {
@@ -817,7 +1253,7 @@ public class MainActivity extends Activity {
         c.setOrientation(LinearLayout.VERTICAL); c.setGravity(Gravity.CENTER); c.setPadding(dp(10),dp(15),dp(10),dp(15)); c.setBackground(makeRounded(0xFFFFFFFF,16)); c.setOnClickListener(listener);
         TextView t = text(title,18,color,true); t.setGravity(Gravity.CENTER); c.addView(t,matchWrap());
         TextView s = text(sub,12,0xFF64748B,false); s.setGravity(Gravity.CENTER); LinearLayout.LayoutParams sp=matchWrap(); sp.setMargins(0,dp(4),0,0); c.addView(s,sp);
-        LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(0, dp(102), 1f); cp.setMargins(dp(4),0,dp(4),0); row.addView(c,cp);
+        LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(0, dp(isTablet() ? 118 : 102), 1f); cp.setMargins(dp(4),0,dp(4),0); row.addView(c,cp);
     }
 
     private LinearLayout horizontalRow() {
@@ -882,10 +1318,24 @@ public class MainActivity extends Activity {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setGravity(Gravity.CENTER_HORIZONTAL);
-        root.setPadding(dp(22), dp(24), dp(22), dp(28));
+        int sidePadding = isTablet() ? 34 : 22;
+        root.setPadding(dp(sidePadding), dp(isTablet() ? 28 : 24), dp(sidePadding), dp(28));
         root.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
-        scroll.addView(root, new ScrollView.LayoutParams(-1, -1));
+
+        if (isTablet()) {
+            int widthDp = getResources().getConfiguration().screenWidthDp;
+            int contentDp = Math.min(Math.max(600, widthDp - 48), 960);
+            ScrollView.LayoutParams lp = new ScrollView.LayoutParams(dp(contentDp), -1);
+            lp.gravity = Gravity.CENTER_HORIZONTAL;
+            scroll.addView(root, lp);
+        } else {
+            scroll.addView(root, new ScrollView.LayoutParams(-1, -1));
+        }
         return scroll;
+    }
+
+    private boolean isTablet() {
+        return getResources().getConfiguration().smallestScreenWidthDp >= 600;
     }
 
     private void addHeader(LinearLayout root, boolean compact) {

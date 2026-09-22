@@ -1,16 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <supports-screens
+        android:smallScreens="true"
+        android:normalScreens="true"
+        android:largeScreens="true"
+        android:xlargeScreens="true"
+        android:anyDensity="true"
+        android:resizeable="true" />
     <uses-permission android:name="android.permission.INTERNET" />
     <application
         android:allowBackup="false"
         android:label="مولدتي"
-        android:icon="@drawable/elyas_tech_logo"
-        android:roundIcon="@drawable/elyas_tech_logo"
+        android:icon="@drawable/generator_icon"
+        android:roundIcon="@drawable/generator_icon"
         android:supportsRtl="true"
-        android:theme="@style/AppTheme">
+        android:theme="@style/AppTheme"
+        android:resizeableActivity="true">
         <activity
             android:name=".MainActivity"
-            android:screenOrientation="portrait"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

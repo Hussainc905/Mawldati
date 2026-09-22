@@ -1,0 +1,5 @@
+[functions.send-whatsapp-receipt]
+verify_jwt = false
+
+[functions.verify-receipt]
+verify_jwt = false
