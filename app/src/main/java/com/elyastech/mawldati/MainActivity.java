@@ -44,7 +44,7 @@ import java.util.concurrent.Executors;
 public class MainActivity extends Activity {
     private static final String SUPABASE_URL = "https://admwtddiylyofpwtauui.supabase.co";
     private static final String SUPABASE_KEY = "sb_publishable_0CY42ztOEqpVSUEDBtJV5w_a_8W6Zg7";
-    private static final String APP_VERSION = "0.2.0";
+    private static final String APP_VERSION = "0.2.1";
     private static final String SUPPORT_PHONE = "07722523232";
 
     private static final String PREFS = "mawldati_license";
@@ -548,6 +548,12 @@ public class MainActivity extends Activity {
     private static boolean isNotExpired(String iso) {
         if (iso == null || iso.isEmpty() || "null".equals(iso)) return true;
         try {
+            // Supabase may return timestamps in more than one ISO representation.
+            // When a date prefix exists, use it as a safe fallback for offline checks.
+            LocalDate end = parseDatePart(iso);
+            if (end != null) {
+                return !end.isBefore(LocalDate.now());
+            }
             return Instant.parse(iso).isAfter(Instant.now());
         } catch (Exception e) {
             return true;
@@ -556,24 +562,44 @@ public class MainActivity extends Activity {
 
     private static String formatDate(String iso) {
         if (iso == null || iso.isEmpty() || "null".equals(iso)) return "غير محدد";
+        LocalDate date = parseDatePart(iso);
+        if (date != null) {
+            return date.format(DateTimeFormatter.ofPattern("yyyy/MM/dd", Locale.US));
+        }
         try {
             Instant i = Instant.parse(iso);
             return DateTimeFormatter.ofPattern("yyyy/MM/dd", Locale.US)
                     .withZone(ZoneId.systemDefault())
                     .format(i);
         } catch (Exception e) {
-            return iso.length() >= 10 ? iso.substring(0, 10).replace('-', '/') : iso;
+            return iso;
         }
     }
 
     private static long remainingDays(String iso) {
         if (iso == null || iso.isEmpty() || "null".equals(iso)) return -1;
+        LocalDate end = parseDatePart(iso);
+        if (end == null) {
+            try {
+                end = Instant.parse(iso).atZone(ZoneId.systemDefault()).toLocalDate();
+            } catch (Exception ignored) {
+                return -1;
+            }
+        }
+        long days = ChronoUnit.DAYS.between(LocalDate.now(), end);
+        return Math.max(0, days);
+    }
+
+    private static LocalDate parseDatePart(String value) {
+        if (value == null) return null;
+        String s = value.trim();
+        if (s.length() < 10) return null;
         try {
-            LocalDate today = LocalDate.now();
-            LocalDate end = Instant.parse(iso).atZone(ZoneId.systemDefault()).toLocalDate();
-            return Math.max(0, ChronoUnit.DAYS.between(today, end));
-        } catch (Exception e) {
-            return -1;
+            // Works for values such as 2026-10-22,
+            // 2026-10-22T00:00:00Z, and 2026-10-22 00:00:00+00.
+            return LocalDate.parse(s.substring(0, 10), DateTimeFormatter.ISO_LOCAL_DATE);
+        } catch (Exception ignored) {
+            return null;
         }
     }
 
