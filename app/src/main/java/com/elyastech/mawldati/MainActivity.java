@@ -54,14 +54,10 @@ import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-import com.google.zxing.BarcodeFormat;
-import com.google.zxing.MultiFormatWriter;
-import com.google.zxing.common.BitMatrix;
-
 public class MainActivity extends Activity {
     private static final String SUPABASE_URL = "https://admwtddiylyofpwtauui.supabase.co";
     private static final String SUPABASE_KEY = "sb_publishable_0CY42ztOEqpVSUEDBtJV5w_a_8W6Zg7";
-    private static final String APP_VERSION = "0.3.6";
+    private static final String APP_VERSION = "0.3.7";
     private static final String SUPPORT_PHONE = "07722523232";
 
     private static final String PREFS = "mawldati_license";
@@ -776,7 +772,6 @@ public class MainActivity extends Activity {
             s.remove("paid_at");
             s.remove("receipt_no");
             s.remove("receipt_id");
-            s.remove("receipt_verify_url");
             JSONArray arr = getSubscribers();
             replaceById(arr, s);
             saveSubscribers(arr);
@@ -842,13 +837,11 @@ public class MainActivity extends Activity {
                 }
 
                 String receiptNo = receipt.optString("receipt_no", "");
-                String verifyUrl = receipt.optString("verify_url", "");
-                if (receiptNo.isEmpty() || verifyUrl.isEmpty()) throw new Exception("receipt_data_missing");
+                if (receiptNo.isEmpty()) throw new Exception("receipt_data_missing");
 
                 // Save the server-issued number locally only as a convenient reference. The authoritative copy is on Supabase.
                 s.put("receipt_no", receiptNo);
                 s.put("receipt_id", receipt.optString("receipt_id", ""));
-                s.put("receipt_verify_url", verifyUrl);
                 JSONArray arr = getSubscribers();
                 replaceById(arr, s);
                 saveSubscribers(arr);
@@ -936,7 +929,6 @@ public class MainActivity extends Activity {
         String amount = money(r.optDouble("amount", 0));
         String paidAt = formatReceiptDate(r.optString("paid_at", ""));
         int amps = r.optInt("amps", 0);
-        String verifyUrl = r.optString("verify_url", "");
 
         // Generator title
         p.setTextAlign(Paint.Align.RIGHT);
@@ -971,14 +963,22 @@ public class MainActivity extends Activity {
         p.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
         canvas.drawText("مدفوع ✓", W/2f, y + 70, p);
 
-        // QR verification
-        Bitmap qr = createQrBitmap(verifyUrl, 300);
-        if (qr != null) canvas.drawBitmap(qr, 390, y + 135, p);
-        p.setColor(0xFF334155);
+        // Anti-tamper notice. The serial number remains the authoritative reference stored on Supabase.
+        p.setColor(0xFFF8FAFC);
+        canvas.drawRoundRect(100, y + 145, 980, y + 455, 24, 24, p);
+        p.setColor(0xFF0B1830);
         p.setTextAlign(Paint.Align.CENTER);
+        p.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+        p.setTextSize(32);
+        canvas.drawText("وصل إلكتروني رسمي", W/2f, y + 220, p);
         p.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
+        p.setColor(0xFF475569);
         p.setTextSize(27);
-        canvas.drawText("امسح QR للتحقق من صحة الوصل من السيرفر", W/2f, y + 475, p);
+        canvas.drawText("رقم الوصل محفوظ في السيرفر ولا يُعاد استخدامه", W/2f, y + 285, p);
+        canvas.drawText("عند وجود خطأ يُلغى الوصل ويُصدر وصل جديد برقم جديد", W/2f, y + 340, p);
+        p.setColor(0xFF0F766E);
+        p.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+        canvas.drawText("تم الإرسال مباشرة إلى واتساب المشترك", W/2f, y + 410, p);
 
         // Footer
         p.setColor(0xFFE2E8F0);
@@ -1010,18 +1010,6 @@ public class MainActivity extends Activity {
         p.setTextAlign(Paint.Align.LEFT);
         canvas.drawText(value == null || value.isEmpty() ? "-" : value, 100, y + 10, p);
         return y + 105;
-    }
-
-    private Bitmap createQrBitmap(String content, int size) {
-        try {
-            if (content == null || content.isEmpty()) return null;
-            BitMatrix m = new MultiFormatWriter().encode(content, BarcodeFormat.QR_CODE, size, size);
-            Bitmap b = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
-            for (int y = 0; y < size; y++) {
-                for (int x = 0; x < size; x++) b.setPixel(x, y, m.get(x, y) ? Color.BLACK : Color.WHITE);
-            }
-            return b;
-        } catch (Exception e) { return null; }
     }
 
     private String formatReceiptDate(String value) {

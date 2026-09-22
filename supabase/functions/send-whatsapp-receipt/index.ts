@@ -1,4 +1,4 @@
-// Mawldati v0.3.6 - sends the official PNG receipt directly through WhatsApp Cloud API.
+// Mawldati v0.3.7 - sends the official PNG receipt directly through WhatsApp Cloud API.
 // Required secrets:
 // WHATSAPP_ACCESS_TOKEN
 // WHATSAPP_PHONE_NUMBER_ID
@@ -62,14 +62,14 @@ Deno.serve(async (req) => {
     const licenseRes = await fetch(`${supabaseUrl}/rest/v1/rpc/check_license`, {
       method: "POST",
       headers: { apikey: serviceRole, Authorization: `Bearer ${serviceRole}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ p_activation_code: activationCode, p_device_id: deviceId, p_app_version: "0.3.6-edge" }),
+      body: JSON.stringify({ p_activation_code: activationCode, p_device_id: deviceId, p_app_version: "0.3.7-edge" }),
     });
     if (!licenseRes.ok) return json({ ok: false, error: "license_check_failed" }, 403);
     const license = await licenseRes.json();
     if (!license?.ok || !["active", "trial"].includes(String(license.status))) return json({ ok: false, error: "license_not_active" }, 403);
 
-    const qr = `${supabaseUrl}/rest/v1/receipts?receipt_no=eq.${encodeURIComponent(receiptNo)}&activation_code=eq.${encodeURIComponent(activationCode)}&select=id,receipt_no,subscriber_name,subscriber_phone,generator_name,paid_month,amount,paid_at,status&limit=1`;
-    const rr = await fetch(qr, { headers: { apikey: serviceRole, Authorization: `Bearer ${serviceRole}` } });
+    const receiptQuery = `${supabaseUrl}/rest/v1/receipts?receipt_no=eq.${encodeURIComponent(receiptNo)}&activation_code=eq.${encodeURIComponent(activationCode)}&select=id,receipt_no,subscriber_name,subscriber_phone,generator_name,paid_month,amount,paid_at,status&limit=1`;
+    const rr = await fetch(receiptQuery, { headers: { apikey: serviceRole, Authorization: `Bearer ${serviceRole}` } });
     const rows = await rr.json();
     const receipt = Array.isArray(rows) ? rows[0] : null;
     if (!receipt) return json({ ok: false, error: "receipt_not_found" }, 404);
